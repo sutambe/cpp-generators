@@ -199,8 +199,38 @@ void triangle()
   }
 }
 
+template<class Gen1, class Gen2>
+void is_same(Gen1 g1, Gen2 g2)
+{
+  assert(g1.to_vector() == g2.to_vector());
+}
+
+void monad_laws()
+{
+  auto f = [](int i) { return gen::make_stepper_gen(1, i); };
+  auto g = [](int i) { return gen::make_stepper_gen(i, 1, -1); };
+  auto M = gen::make_single_gen(300);
+
+  // left identity
+  is_same(M.concat_map(f), f(300));
+  
+  // right identity
+  is_same(M.concat_map([](int i) { 
+            return gen::make_single_gen(i); 
+          }), M);
+  
+  // associativity
+  is_same(M.concat_map(f).concat_map(g), 
+          M.concat_map([f,g](int i) mutable { 
+            return f(i).concat_map(g);
+          }));
+}
+
 int main(void)
 {
   test_generators();
+  monad_laws();
   triangle();
+
+  std::cout << "\n";
 }
