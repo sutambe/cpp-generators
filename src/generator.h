@@ -10,6 +10,7 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
 
 #include <boost/optional.hpp>
 
@@ -106,7 +107,7 @@ namespace gen {
       });
     }
 
-    auto take(unsigned int count)
+    auto take(unsigned int count) const
     {
       return make_gen_from(
              [self = *this, count]() mutable {
@@ -119,8 +120,35 @@ namespace gen {
           });
     }
 
+    template <class ReducerFunc, class Seed>
+    auto reduce(ReducerFunc&& reducer, Seed&& seed) const
+    {
+      return make_gen_from(
+               [self = *this,
+                reducer = std::forward<ReducerFunc>(reducer), 
+                seed = std::forward<Seed>(seed),
+                done = false]() mutable {
+                  try {
+                    while(!done)
+                      seed = reducer(seed, self.generate());
+                  }
+                  catch(std::out_of_range &) {
+                    done = true;
+                    return seed;
+                  }
+                  throw std::out_of_range("reduction completed");
+                  return seed;
+          });
+    }
+
     template <class UGen>
-    auto concat(UGen&& ugen)
+    auto append(UGen&& ugen) const
+    {
+      return concat(std::forward<UGen>(ugen));
+    }
+
+    template <class UGen>
+    auto concat(UGen&& ugen) const
     {
       return make_gen_from(
           [tgen = *this,
@@ -151,7 +179,51 @@ namespace gen {
           });
     }
 
-    std::vector<T> to_vector()
+    template <class UGenFunc>
+    auto concat_map(UGenFunc&& ugenfunc) const
+    {
+      typedef decltype(ugenfunc(std::declval<T>())) UGenType;
+      return make_gen_from(
+          [tgen = *this,
+           ugenfunc = std::forward<UGenFunc>(ugenfunc),
+           ugenstorage = std::aligned_storage_t<sizeof(UGenType)>(),
+           tdone = false,
+           udone = true]() mutable {
+             if(!udone)
+             {
+               try {
+                 return reinterpret_cast<UGenType *>(&ugenstorage)->generate();
+               }
+               catch(std::out_of_range &) {
+                 udone = true;
+               }
+             }
+             while(!tdone && udone)
+             {
+               try {
+                 new (&ugenstorage) UGenType(ugenfunc(tgen.generate()));
+                 udone = false;
+               }
+               catch(std::out_of_range &) {
+                 tdone = true;
+                 throw;
+               }
+
+               if(!udone)
+               {
+                 try {
+                   return reinterpret_cast<UGenType *>(&ugenstorage)->generate();
+                 }
+                 catch(std::out_of_range &) {
+                   udone = true;
+                 }
+               }
+             }
+             throw std::out_of_range("concat_map completed");
+          });
+    }
+
+    std::vector<T> to_vector() 
     {
       std::vector<T> v;
       try {

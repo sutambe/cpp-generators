@@ -182,7 +182,25 @@ void test_generators(void)
   std::cout << "All assertions satisfied\n";
 }
 
+void triangle()
+{
+  auto triangle_gen = 
+    gen::make_inorder_gen({1,2,3,4,5,6,7,8,9,10,9,8,7,6,5,4,3,2,1})
+        .concat_map([](int i) {
+              std::cout << "\n";
+              return gen::make_stepper_gen(1, i);
+            });
+
+  try {
+    while(true)
+      std::cout << triangle_gen.generate();
+  }
+  catch(std::out_of_range &) { 
+  }
+}
+
 int main(void)
 {
   test_generators();
+  triangle();
 }
