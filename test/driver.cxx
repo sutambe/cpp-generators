@@ -1,11 +1,9 @@
 #include <iostream>
 #include <fstream>
-//#include <boost/archive/text_oarchive.hpp>
-//#include <boost/archive/text_iarchive.hpp>
+#include <boost/core/demangle.hpp>
 
 #include "generator.h"
 #include "type_generator.h"
-//#include "serialize_tuple.h"
 
 #ifndef RANDOM_SEED
   #define RANDOM_SEED 0xAC0
@@ -197,6 +195,7 @@ void triangle()
   }
   catch(std::out_of_range &) { 
   }
+  std::cout << "\n";
 }
 
 template<class Gen1, class Gen2>
@@ -226,11 +225,17 @@ void monad_laws()
           }));
 }
 
+void test_typegen()
+{
+  std::cout << "\n Randomly generated std::tuple\n";
+  typegen::RandomTuple<RANDOM_SEED>::type tuple;
+  std::cout << boost::core::demangle(typeid(tuple).name());
+}
+
 int main(void)
 {
   test_generators();
+  test_typegen();
   monad_laws();
   triangle();
-
-  std::cout << "\n";
 }

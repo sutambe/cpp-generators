@@ -186,13 +186,15 @@ namespace gen {
       return make_gen_from(
           [tgen = *this,
            ugenfunc = std::forward<UGenFunc>(ugenfunc),
-           ugenstorage = std::aligned_storage_t<sizeof(UGenType)>(),
+           //ugenopt  = boost::optional<UGenType>(),
+           ugenvec  = std::vector<UGenType>(),
            tdone = false,
            udone = true]() mutable {
              if(!udone)
              {
                try {
-                 return reinterpret_cast<UGenType *>(&ugenstorage)->generate();
+                 return ugenvec[0].generate();
+                 //return ugenopt->generate();
                }
                catch(std::out_of_range &) {
                  udone = true;
@@ -201,7 +203,9 @@ namespace gen {
              while(!tdone && udone)
              {
                try {
-                 new (&ugenstorage) UGenType(ugenfunc(tgen.generate()));
+                 //ugenopt.emplace(ugenfunc(tgen.generate()));
+                 ugenvec.clear();
+                 ugenvec.emplace_back(ugenfunc(tgen.generate()));
                  udone = false;
                }
                catch(std::out_of_range &) {
@@ -212,7 +216,8 @@ namespace gen {
                if(!udone)
                {
                  try {
-                   return reinterpret_cast<UGenType *>(&ugenstorage)->generate();
+                   return ugenvec[0].generate();
+                   //return ugenopt->generate();
                  }
                  catch(std::out_of_range &) {
                    udone = true;
@@ -254,9 +259,10 @@ namespace gen {
   template <class T>
   auto make_empty_gen()
   {
-    return make_gen_from([]() { 
+    return make_gen_from([]() -> T { 
         throw std::out_of_range("empty generator!"); 
-        return std::declval<T>();
+        //return std::declval<T>(); //did not work for int!!
+        return *static_cast<T *>(nullptr);
       });
   }
 
