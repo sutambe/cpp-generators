@@ -2,6 +2,17 @@
 #include <fstream>
 #include <boost/core/demangle.hpp>
 
+#if _MSC_VER == 1900
+
+#define CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+
+//#include <experimental/generator>
+#include <msft_gen_mod.h>
+
+#endif
+
 #include "generator.h"
 #include "type_generator.h"
 
@@ -232,10 +243,211 @@ void test_typegen()
   std::cout << boost::core::demangle(typeid(tuple).name());
 }
 
+void test_gen_iterator()
+{
+  const int SIZE = 6;
+  int array [SIZE] = { 1, 2, 3, 4, 5, 6 };
+  auto gen = gen::make_inorder_gen(array, array + SIZE);
+  int i = 0;
+  
+  for (auto & g : gen)
+  {
+    assert(g == array[i++]);
+  }
+}
+
+void test_priority_n()
+{
+  auto src1  = gen::make_stepper_gen(1).take(100);
+  auto src2  = gen::make_stepper_gen(1).take(100);
+  auto lown  = gen::make_lowest_n_gen(src1, 10);
+  auto highn = gen::make_highest_n_gen(src2, 10);
+
+  std::cout << "Lowest N: ";
+  for (auto & val : lown)
+  {
+    std::cout << val << " ";
+    assert(val >= 1 && val <= 10);
+  }
+  
+  std::cout << std::endl << "Highest N: ";
+  for (auto & val : highn)
+  {
+    std::cout << val << " ";
+    assert(val >= 91 && val <= 100);
+  }
+  std::cout << std::endl;
+}
+
+#if _MSC_VER == 1900
+
+std::experimental::generator<char> hello_world()
+{
+  yield 'H';
+  yield 'e';
+  yield 'l';
+  yield 'l';
+  yield 'o';
+  yield ',';
+  yield ' ';
+  yield 'w';
+  yield 'o';
+  yield 'r';
+  yield 'l';
+  yield 'd';
+}
+
+void test_hello_world()
+{
+  for (char ch : hello_world())
+    std::cout << ch << std::endl;
+
+  std::cout << std::endl;
+}
+
+class MyFileStream : public std::ifstream
+{
+public:
+
+  MyFileStream(const std::string & filename)
+  : std::ifstream(filename)
+  {}
+  
+  ~MyFileStream() {
+    std::cout << "\nclosing filestream";
+  }
+};
+
+MyFileStream & operator >> (MyFileStream & m, std::string & str)
+{
+  static_cast<std::ifstream &>(m) >> str;
+  return m;
+}
+
+std::experimental::generator<std::string> read_file(const std::string & filename)
+{
+  MyFileStream in(filename);
+  std::string str;
+  while (in >> str)
+    yield str;
+}
+
+void test_read_file(const std::string filename)
+{
+  {
+    auto & generator = read_file(filename);
+    for (auto & str : generator)
+    {
+      std::cout << str << " ";
+    }
+    std::cout << "\n";
+  }
+  std::cout << "finished test_read_file" << std::endl;
+}
+
+std::experimental::generator<char> msg(std::string s)
+{
+  for (auto ch : s)
+    yield ch;
+}
+
+void test_multiple()
+{
+  auto a = msg("Hello");
+  auto b = msg("World");
+
+  auto i1 = begin(a);
+  auto i2 = begin(b);
+
+  while (i1 != end(a) && i2 != end(b))
+  {
+    std::cout << *i1 << *i2 << " ";
+    ++i1;
+    ++i2;
+  }
+  std::cout << std::endl;
+}
+
+std::experimental::generator<char> hello(int add = 0)
+{
+  for (auto ch : "HELLO, WORLD")
+    yield ch + add;
+}
+
+void test_coroutine_gen()
+{
+  std::string msg = "HELLO, WORLD";
+
+  auto gen = gen::make_coroutine_gen(hello, 32)
+                .map([](char ch) { return char(ch - 32); })
+                .take(msg.size());
+  int i = 0;
+
+  for (auto ch: gen)
+  {
+    std::cout << ch;
+    //assert(ch == msg[i++]);
+  }
+  std::cout << std::endl;
+}
+
+std::experimental::generator<int> range(int start, int count)
+{
+  if (count > 0) {
+    yield start;
+    for (auto i : range(start + 1, count - 1))
+      yield i;
+  }
+}
+
+void test_recursive_coroutine()
+{
+  // deliberate leak. Is it the only one?
+  new int;
+
+  for (int i : range(5, 4)) // 4000 crash
+    std::cout << i << " ";
+
+  std::cout << std::endl;
+}
+
+void test_generator_iterator_category()
+{
+  using Gen = decltype(hello());
+  using Category = Gen::iterator::iterator_category;
+  const bool test = std::is_same<std::input_iterator_tag, Category>::value;
+
+  static_assert(test, "");
+}
+
+#endif // _MSC_VER
+
 int main(void)
 {
-  test_generators();
-  test_typegen();
-  monad_laws();
-  triangle();
+  try {
+    test_generators();
+    test_typegen();
+    monad_laws();
+    triangle();
+    test_gen_iterator();
+    test_priority_n();
+
+#if _MSC_VER == 1900
+    //test_read_file("README.md");
+    //test_hello_world();
+    //test_multiple();
+    //test_coroutine_gen();
+    //test_recursive_coroutine();
+    //test_generator_iterator_category();
+
+
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_WNDW);
+    _CrtDumpMemoryLeaks();
+
+#endif // _MSC_VER
+  }
+  catch (std::out_of_range & ex)
+  {
+    std::cerr << "Caught std::out_of_range exception: " << ex.what() << std::endl;
+  }
 }

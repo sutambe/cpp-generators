@@ -1,5 +1,4 @@
-#ifndef RTI_TYPE_GENERATOR_H
-#define RTI_TYPE_GENERATOR_H
+#pragma once
 
 #include <type_traits>
 
@@ -169,7 +168,7 @@ namespace typegen {
     template<size_t lfsr, class... Args>
     struct NextUniqueType;
 
-    template<size_t lfsr, class... Args>
+    template<uint16_t lfsr, class... Args>
     struct NextUniqueType<lfsr, std::tuple<Args...>>
     {
       typedef typename TypeMap<LFSR(lfsr) % MAP_SIZE, LFSR(lfsr)>::type Next;
@@ -218,6 +217,3 @@ namespace typegen {
 } // namespace typegen
 
 #undef TYPE_MAP
-
-#endif // RTI_TYPE_GENERATOR_H
-

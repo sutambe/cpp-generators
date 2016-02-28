@@ -1,5 +1,4 @@
-#ifndef GEN_FACTORY_H
-#define GEN_FACTORY_H
+#pragma once
 
 namespace gen {
 
@@ -224,5 +223,3 @@ namespace gen {
   };
 
 } // namespace gen
-
-#endif // GEN_FACTORY_H

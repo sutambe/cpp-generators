@@ -1,9 +1,9 @@
-#ifndef RTI_GENERATOR_H
-#define RTI_GENERATOR_H
+#pragma once
 
 #include <string>
 #include <cstdlib>
 #include <vector>
+#include <queue>
 #include <list>
 #include <array>
 #include <ctime>
@@ -19,7 +19,10 @@ namespace gen {
   constexpr unsigned int DEFAULT_MAX_STR_LEN = 10;
   constexpr unsigned int DEFAULT_MAX_SEQ_LEN = 10;
 
-#ifdef RTI_WIN32
+  template <class T, class Gen>
+  class gen_iterator;
+
+#ifdef WIN32
   void initialize(unsigned int seed = 0)
   {
     if (seed == 0)
@@ -46,7 +49,7 @@ namespace gen {
   {
     return static_cast<int>(random());
   }
-#endif
+#endif // WIN32
 
   template <class GenFunc>
   auto make_gen_from(GenFunc&& func);
@@ -76,21 +79,31 @@ namespace gen {
       return GenFunc::operator()();
     }
 
+    gen_iterator<T, Gen> begin() 
+    {
+      return gen_iterator<T, Gen>(*this, false);
+    }
+
+    gen_iterator<T, Gen> end() 
+    {
+      return gen_iterator<T, Gen>(*this, true);
+    }
+
     template <class Func>
-    auto map(Func&& func) const
+    auto map(Func&& func)
     {
       return make_gen_from(
-                [self = *this,
+                [self = std::move(*this),
                  func = std::forward<Func>(func)]() mutable {
                     return func(self.generate());
                 });
     }
 
     template <class Zipper, class... GenList>
-    auto zip_with(Zipper&& func, GenList&&... genlist) const
+    auto zip_with(Zipper&& func, GenList&&... genlist)
     {
       return make_gen_from(
-        [self = *this,
+        [self = std::move(*this),
          genlist...,
          func = std::forward<Zipper>(func)]() mutable {
             return func(self.generate(), genlist.generate()...);
@@ -98,19 +111,19 @@ namespace gen {
     }
 
     template <class UGen>
-    auto amb(UGen&& ugen) const
+    auto amb(UGen&& ugen) 
     {
       return make_gen_from(
-         [self = *this,
+         [self = std::move(*this),
           ugen = std::forward<UGen>(ugen)]() mutable {
              return (random_int32() % 2) ? self.generate() : ugen.generate();
       });
     }
 
-    auto take(unsigned int count) const
+    auto take(size_t count) 
     {
       return make_gen_from(
-             [self = *this, count]() mutable {
+             [self = std::move(*this), count]() mutable {
                 if(count-- > 0)
                 {
                   return self.generate();
@@ -121,10 +134,10 @@ namespace gen {
     }
 
     template <class ReducerFunc, class Seed>
-    auto reduce(ReducerFunc&& reducer, Seed&& seed) const
+    auto reduce(ReducerFunc&& reducer, Seed&& seed) 
     {
       return make_gen_from(
-               [self = *this,
+               [self = std::move(*this),
                 reducer = std::forward<ReducerFunc>(reducer), 
                 seed = std::forward<Seed>(seed),
                 done = false]() mutable {
@@ -142,16 +155,16 @@ namespace gen {
     }
 
     template <class UGen>
-    auto append(UGen&& ugen) const
+    auto append(UGen&& ugen) 
     {
       return concat(std::forward<UGen>(ugen));
     }
 
     template <class UGen>
-    auto concat(UGen&& ugen) const
+    auto concat(UGen&& ugen) 
     {
       return make_gen_from(
-          [tgen = *this,
+          [tgen = std::move(*this),
            ugen = std::forward<UGen>(ugen),
            tdone = false,
            udone = false]() mutable {
@@ -180,11 +193,11 @@ namespace gen {
     }
 
     template <class UGenFunc>
-    auto concat_map(UGenFunc&& ugenfunc) const
+    auto concat_map(UGenFunc&& ugenfunc) 
     {
       typedef decltype(ugenfunc(std::declval<T>())) UGenType;
       return make_gen_from(
-          [tgen = *this,
+          [tgen = std::move(*this),
            ugenfunc = std::forward<UGenFunc>(ugenfunc),
            //ugenopt  = boost::optional<UGenType>(),
            ugenvec  = std::vector<UGenType>(),
@@ -615,10 +628,103 @@ namespace gen {
            });
   }
 
+  namespace detail {
+
+    template <class Gen, class HeapComp>
+    auto make_priority_n_gen(Gen&& src_gen, size_t n, HeapComp comp)
+    {
+      using SrcType = decltype(src_gen.generate());
+      std::priority_queue<SrcType, std::vector<SrcType>, HeapComp> heap;
+
+      while (1)
+      {
+        try {
+          auto && val = src_gen.generate();
+          if (heap.size() < n)
+          {
+            heap.push(std::move(val));
+          }
+          else if (comp(val, heap.top()))
+          {
+            heap.push(std::move(val));
+            heap.pop();
+          }
+        }
+        catch (std::out_of_range &)
+        {
+          break;
+        }
+      }
+
+      return make_gen_from([heap = std::move(heap)]() mutable {
+        if (heap.empty())
+          throw std::out_of_range("empty heap");
+        else
+        {
+          SrcType val = heap.top();
+          heap.pop();
+          return val;
+        }
+      });
+    }
+
+  } // namespace detail
+
+  template <class Gen>
+  auto make_lowest_n_gen(Gen&& src_gen, size_t n)
+  {
+    using MaxHeapComp = std::less<>;
+    return detail::make_priority_n_gen(std::forward<Gen>(src_gen), n, MaxHeapComp());
+  }
+
+  template <class Gen>
+  auto make_highest_n_gen(Gen&& src_gen, size_t n)
+  {
+    using MinHeapComp = std::greater<>;
+    return detail::make_priority_n_gen(std::forward<Gen>(src_gen), n, MinHeapComp());
+  }
+
+#if _MSC_VER == 1900
+  
+  template <class Func, class... Args>
+  auto make_coroutine_gen(Func&& f, Args... args)
+  {
+    using gentype = decltype(f(args...));
+    std::vector<gentype> gen_v;
+    std::vector<decltype(std::declval<gentype>().begin())> iter_v;
+
+    gen_v.reserve(1);
+    iter_v.reserve(2);
+    bool first = true;
+
+    return make_gen_from(
+      [first, 
+       gen_v=std::move(gen_v), 
+       iter_v=std::move(iter_v), 
+       f=std::move(f), 
+       args...]() mutable {
+      if (first)
+      {
+        first = false;
+        gen_v.emplace_back(f(args...));
+        iter_v.emplace_back(gen_v[0].begin());
+        iter_v.emplace_back(gen_v[0].end());
+      }
+      else
+        ++iter_v[0];
+      
+      if (iter_v[0] == iter_v[1])
+        throw std::out_of_range("coroutine completed");
+      else
+      {
+        return *iter_v[0];
+      }
+    });
+  }
+  
+#endif // __MSC_VER
+
 } // namespace gen
 
 #include "gen_factory.h"
-
-#endif // RTI_GENERATOR_H
-
-
+#include "gen_iterator.h"
