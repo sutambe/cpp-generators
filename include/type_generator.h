@@ -58,7 +58,7 @@ namespace typegen {
     struct TypeMap<13, lfsr>
     {
       // avoid sequence<shared_ptr<T>> = 16
-      // avoid sequence<raw pointer = 17
+      // avoid sequence<raw pointer> = 17
       // avoid sequence<optional<T>> = 18
       constexpr static size_t selection = LFSR(lfsr) % 16; 
       typedef std::vector<typename TypeMap<selection, LFSR(lfsr)>::type> type;
@@ -165,7 +165,7 @@ namespace typegen {
       constexpr static bool value = false;
     };
 
-    template<size_t lfsr, class... Args>
+    template<uint16_t lfsr, class... Args>
     struct NextUniqueType;
 
     template<uint16_t lfsr, class... Args>
