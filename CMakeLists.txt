@@ -1,0 +1,5 @@
+cmake_minimum_required (VERSION 3.10)
+project (CppGenerators)
+include_directories(${PROJECT_SOURCE_DIR}/include)
+add_executable(driver test/driver.cxx)
+set_property(TARGET driver PROPERTY CXX_STANDARD 17)

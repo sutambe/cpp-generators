@@ -13,8 +13,8 @@
 
 #endif
 
-#include "generator.h"
-#include "type_generator.h"
+#include "generators/generator.h"
+#include "generators/type_generator.h"
 
 #ifndef RANDOM_SEED
   #define RANDOM_SEED 0xAC0
